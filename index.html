@@ -145,6 +145,12 @@ main{padding-block:28px 56px;min-height:60vh}
 .seg{display:flex;gap:6px;flex-wrap:wrap;margin:20px 0 18px}
 .seg a{display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--fg);text-decoration:none;font-weight:600;font-size:15px;min-height:42px}
 .seg a:hover{border-color:var(--pc,var(--brand))}
+.qnav{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:0 0 18px}
+.qnav .ql{font-size:13px;color:var(--fg-2);font-weight:600;margin-right:4px}
+.qnav a{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--fg);text-decoration:none;font-size:14px;min-height:34px}
+.qnav a .num{font-size:12px;color:var(--fg-2)}
+.qnav a:hover{border-color:var(--pc,var(--brand))}
+.qnav a[aria-current="page"]{border-color:var(--pc,var(--brand));box-shadow:inset 0 0 0 1px var(--pc,var(--brand));background:var(--surface-2);font-weight:600}
 .seg a[aria-current="page"]{border-color:var(--pc,var(--brand));box-shadow:inset 0 0 0 1px var(--pc,var(--brand));background:var(--surface-2)}
 .pinfo{padding:14px 16px;border:1px solid var(--line);border-radius:12px;background:var(--surface);margin-bottom:18px;font-size:14px;color:var(--fg-2)}
 .pinfo b{color:var(--fg)}
@@ -56009,7 +56015,13 @@ function gradeStats(g) {
 var TABS = ['teoriia', 'test', 'praktyka'];
 function parseRoute() {
   var h = (location.hash || '').replace(/^#/, ''), p = h.split('-'), r = p[0];
-  if (r === 'klas' && GRADES.indexOf(+p[1]) >= 0) return { v: 'klas', g: +p[1], prog: PK.indexOf(p[2]) >= 0 ? p[2] : null };
+  if (r === 'klas' && GRADES.indexOf(+p[1]) >= 0) {
+    var k = { v: 'klas', g: +p[1], prog: null, f: null };
+    p.slice(2).forEach(function (x) { if (PK.indexOf(x) >= 0) k.prog = x; else if (x) k.f = x; });
+    if (k.prog && !(D[k.g] && D[k.g].programs && D[k.g].programs[k.prog])) k.prog = null;
+    if (k.f && (k.prog ? !D[k.g].programs[k.prog].sections.some(function (s) { return s.id === k.f; }) : !STRANDS[k.f])) k.f = null;
+    return k;
+  }
   if (r === 'tema' && TOPIC[p[1]]) {
     var o = { v: 'tema', id: p[1], prog: null, tab: 'teoriia' };
     p.slice(2).forEach(function (x) { if (PK.indexOf(x) >= 0) o.prog = x; else if (TABS.indexOf(x) >= 0) o.tab = x; });
@@ -56023,7 +56035,7 @@ function parseRoute() {
   return { v: 'home' };
 }
 function href(o) {
-  if (o.v === 'klas') return '#klas-' + o.g + (o.prog ? '-' + o.prog : '');
+  if (o.v === 'klas') return '#klas-' + o.g + (o.prog ? '-' + o.prog : '') + (o.f ? '-' + o.f : '');
   if (o.v === 'tema') return '#tema-' + o.id + (o.prog ? '-' + o.prog : '') + (o.tab && o.tab !== 'teoriia' ? '-' + o.tab : '');
   if (o.v === 'kontrol') return '#kontrol-' + o.sid;
   return '#' + (o.v === 'home' ? 'home' : o.v);
@@ -56117,6 +56129,13 @@ function topicRow(id, ctxProg, showProgs) {
     (showProgs ? T.progs.map(progChip).join('') : '') + '</div>';
   return '<a class="trow" href="' + href({ v: 'tema', id: id, prog: ctxProg }) + '"><div><div class="tt">' + esc(t.title) + '</div><div class="ti">' + esc(t.intro) + '</div>' + tags + '</div><div class="st">' + st + '</div></a>';
 }
+function quickNav(g, prog, items, cur, label) {
+  if (items.length < 2) return '';
+  var h = '<nav class="qnav' + (prog ? ' p-' + prog : '') + '" id="qnav" aria-label="' + label + '"><span class="ql">' + label + ':</span>';
+  h += '<a href="' + href({ v: 'klas', g: g, prog: prog }) + '"' + (!cur ? ' aria-current="page"' : '') + '>Усі</a>';
+  items.forEach(function (it) { h += '<a href="' + href({ v: 'klas', g: g, prog: prog, f: it.f }) + '"' + (cur === it.f ? ' aria-current="page"' : '') + '>' + esc(it.name) + '<span class="num">' + it.n + '</span></a>'; });
+  return h + '</nav>';
+}
 function viewKlas(r) {
   var g = r.g, d = D[g];
   if (!d) return '<div class="empty-state">Матеріали для ' + g + ' класу готуються.</div>';
@@ -56129,7 +56148,11 @@ function viewKlas(r) {
   h += '</nav>';
   if (!r.prog) {
     h += '<div class="pinfo">Усі теми класу зі спільного банку, згруповані за напрямами. У позначках видно, до яких програм авторів входить кожна тема. Оберіть автора, щоб побачити розділи його підручника.</div>';
+    var sn = [];
+    STRAND_ORDER.forEach(function (sk) { var c = Object.keys(d.topics).filter(function (id) { return d.topics[id].strand === sk; }).length; if (c) sn.push({ f: sk, name: STRANDS[sk], n: c }); });
+    h += quickNav(g, null, sn, r.f, 'Напрями');
     STRAND_ORDER.forEach(function (sk) {
+      if (r.f && r.f !== sk) return;
       var ids = Object.keys(d.topics).filter(function (id) { return d.topics[id].strand === sk; });
       if (!ids.length) return;
       h += '<div class="strand-h">' + STRANDS[sk] + '</div><div class="sec">' + ids.map(function (id) { return topicRow(id, null, true); }).join('') + '</div>';
@@ -56138,7 +56161,9 @@ function viewKlas(r) {
     var P = d.programs[r.prog];
     h += '<div class="pinfo p-' + r.prog + '"><b>' + esc(P.textbook) + '</b><br>Основа структури: ' + esc(P.basis) + ' ' +
       '<span class="badge ' + (P.verified === 'toc' ? 'toc' : P.verified === 'partial' ? 'partial' : '') + '">' + (P.verified === 'toc' ? 'звірено зі змістом підручника' : P.verified === 'program' ? 'за навчальною програмою' : P.verified === 'partial' ? 'частково звірено зі змістом' : 'узагальнена структура') + '</span></div>';
+    h += quickNav(g, r.prog, P.sections.map(function (sec) { return { f: sec.id, name: sec.title, n: sec.topics.length }; }), r.f, 'Розділи');
     P.sections.forEach(function (sec, i) {
+      if (r.f && r.f !== sec.id) return;
       var kr = resOf('k:' + sec.id).test;
       h += '<section class="sec"><div class="sec-h"><div><h3>' + esc(sec.title) + '</h3><p>' + esc(sec.summary) + '</p></div>' +
         '<a class="btn small ghost" href="#kontrol-' + sec.id + '">Тематична контрольна' + (kr ? ' · ' + kr.best + '/12' : '') + '</a></div>' +
@@ -56492,6 +56517,7 @@ function render() {
   document.title = title;
   var id = r.v === 'tema' ? r.id : r.v + (r.g || r.sid || '') + (r.prog || '');
   if (id !== lastId) window.scrollTo(0, 0);
+  else if (r.v === 'klas') { var qn = $('#qnav'); if (qn && qn.getBoundingClientRect().top < 70) window.scrollTo(0, Math.max(0, qn.getBoundingClientRect().top + window.pageYOffset - 80)); }
   else { var tb = $('#tabs'); if (tb) tb.scrollIntoView({ block: 'start' }); }
   lastId = id;
 }
